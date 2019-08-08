@@ -28,9 +28,9 @@ UfiNumber nufi(vatin, formula);
 try {
     std::string snufi = nufi.generate();
     // UFI: GMTT-2SQN-6FDD-6TV1
-    cout << "UFI: " << snufi << endl;
+    std::cout << "UFI: " << snufi << std::endl;
     nufi.validate(snufi);
 } catch(UfiException const& e){
-    cout << e.what() << endl;
+    std::cout << e.what() << std::endl;
 }
 ```
