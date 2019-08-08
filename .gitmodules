@@ -1,0 +1,3 @@
+[submodule "src/biginteger"]
+	path = src/biginteger
+	url = https://github.com/ThiBsc/BigInteger.git
