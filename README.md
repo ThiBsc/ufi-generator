@@ -1,7 +1,8 @@
 # ufi-generator
 [![License: MIT](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/gpl-3.0)
 
-A C++ UFI generator implementation
+A C++ UFI (Unique Formula Identifier) generator implementation  
+:books: [UFI Developer manual](https://poisoncentres.echa.europa.eu/documents/22284544/22295820/ufi_developers_manual_en.pdf)
 
 ## Compile
 ```bash
