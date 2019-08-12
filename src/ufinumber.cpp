@@ -2,6 +2,13 @@
 
 std::string UfiNumber::version = "0";
 
+UfiNumber::UfiNumber()
+	: vatin("")
+	, formula(-1)
+{
+
+}
+
 UfiNumber::UfiNumber(std::string vatin, int64_t formula)
 	: vatin(vatin)
 	, formula(formula)
@@ -39,6 +46,13 @@ std::string UfiNumber::generate() throw(UfiException)
 		throw UfiException(UfiException::CREATION, UFI001, "Invalid or out of bound formulation number");
 	}
 	return ufi.str();
+}
+
+std::string UfiNumber::generate(std::string vatin, int64_t formula) throw(UfiException)
+{
+	this->vatin = vatin;
+	this->formula = formula;
+	return generate();
 }
 
 void UfiNumber::validate(std::string nufi, bool bypassVersionNumber) throw(UfiException)
@@ -81,6 +95,235 @@ void UfiNumber::validate(std::string nufi, bool bypassVersionNumber) throw(UfiEx
 	}
 }
 
+struct reversed_ufi UfiNumber::decode(std::string nufi)
+{
+	struct reversed_ufi ret;
+	bool canDecode = true;
+	try {
+		validate(nufi, true);
+	} catch(UfiException const& e){
+		canDecode = false;
+		ret.vatin = "";
+		ret.formula = -1;
+		std::cerr << e.what() << '\n' << "Unable to decode an invalid UFI" << std::endl;
+	}
+
+	if (canDecode){
+		// Clean the ufi
+		nufi.erase(std::remove(nufi.begin(), nufi.end(), '-'), nufi.end());
+
+		// Reverse step 4
+		nufi.erase(0, 1);
+
+		// Reverse step 3
+		std::vector<int> rev_chars(UFI_SIZE-1, 0);
+		int i = 0;
+		for (const char &c : nufi){
+			auto it = std::find(tbase31.begin(), tbase31.end(), c);
+			rev_chars[t24.at(i)] = std::distance(tbase31.begin(), it);
+			i++;
+		}
+
+		// Reverse step 2
+		BigInteger bi = BigInteger::ZERO;
+		int pow = nufi.size()-1;
+		for (const int& i : rev_chars){
+			//std::cout << BigInteger(i) << " * " << 31 << "^" << pow << std::endl;
+			bi += BigInteger(i) * BigInteger(31).pow(pow);
+			pow--;
+		}
+
+		// Reverse step 1
+		std::string bi_binary = bi.toString(2);
+		// Left-pad '0' if less than payload_size
+		while (bi_binary.length() < PAYLOAD_SIZE){
+			bi_binary.insert(0, "0");
+		}
+		
+		std::string vat_str;
+		int64_t formulation = std::atoi(BigInteger(bi_binary.substr(0, FORMULA_SIZE), 2).toString().c_str());
+		int country_group = std::atoi(BigInteger(bi_binary.substr(FORMULA_SIZE, COUNTRY_GCODE_SIZE), 2).toString().c_str());
+		auto it_nOfBits = std::find_if(t21.begin(), t21.end(), [&country_group](std::pair<std::string, struct group_and_code> const& pgc) -> bool {
+			return pgc.second.country_group_code == country_group;
+		});
+		int nOfBits = (it_nOfBits != t21.end() ? it_nOfBits->second.nbits : 0 );
+		int country_code = std::atoi(BigInteger(bi_binary.substr(FORMULA_SIZE+COUNTRY_GCODE_SIZE, nOfBits), 2).toString().c_str());
+		// when nOfBits = -1, (FR, GB)
+		if (nOfBits == NONE){
+			nOfBits = 0;
+			country_code = NONE;
+		}
+		auto it_iso = std::find_if(t21.begin(), t21.end(), [&country_group, &country_code](std::pair<std::string, struct group_and_code> const& pgc) -> bool {
+			return pgc.second.country_group_code == country_group && pgc.second.country_code == country_code;
+		});
+		std::string iso = (it_iso != t21.end() ? it_iso->first : "" );
+		
+		//std::cout << formulation << " " << country_group << std::endl;
+		int startBit = FORMULA_SIZE+COUNTRY_GCODE_SIZE+nOfBits;
+		int endBit = PAYLOAD_SIZE - startBit;
+		int64_t vat_number = std::atoll(BigInteger(bi_binary.substr(startBit, endBit-1), 2).toString().c_str());
+		//unsigned short version = bi.toString(2).back() - '0';
+
+		if (country_group == 0){
+			// UFI with company key
+			vat_str = std::to_string(vat_number);
+		} else {
+			// UFI with VATIN
+			// Reverse the "STRATEGY"
+			struct country_and_pattern cap = t22.at(iso);
+			std::cout << cap.to_string() << std::endl;
+			if (cap.strategy == TRIVIALLY){
+				vat_str = std::to_string(vat_number);
+				if (!iso.compare("AT")){
+					vat_str.insert(0, "U");
+				} else if (!iso.compare("BE")){
+					vat_str.insert(0, "0");
+				} else if (!iso.compare("NL")){
+					vat_str.insert(9, "B");
+				}
+			} else if (cap.strategy == NUM8_AND_LETTER){
+				std::string vat_number_str = std::to_string(vat_number);
+				int len = vat_number_str.length();
+				char letter = std::atoi(vat_number_str.substr(0, len-8).c_str())+'A';
+				vat_str.append(vat_number_str.substr(len-8));
+				vat_str.push_back(letter);
+			} else if (cap.strategy == CONTAIN_NUMPART7_FIRST_LAST_CHAR){
+				std::string vat_number_str = std::to_string(vat_number);
+				int len = vat_number_str.length();
+				int firstPart = std::atoi(vat_number_str.substr(0, len-7).c_str());
+				// Brut force the possibility to find c1 and c2
+				int c1 = -1, c2 = -1, i=0, j=0;
+				while ( c1==-1 && i<36){
+					while (c2==-1 && j<36){
+						if ((36*i + j) == firstPart){
+							c1 = i;
+							c2 = j;
+						}
+						j++;
+					}
+					j = 0;
+					i++;
+				}
+				vat_str.push_back(c1<10 ? c1+'0' : (c1-10)+'A');
+				vat_str.append(vat_number_str.substr(len-7));
+				vat_str.push_back(c2<10 ? c2+'0' : (c2-10)+'A');
+			} else if (cap.strategy == CONTAIN_NUMPART9_FIRST_SECOND_CHAR){
+				std::string vat_number_str = std::to_string(vat_number);
+				int len = vat_number_str.length();
+				int firstPart = std::atoi(vat_number_str.substr(0, len-9).c_str());
+				// Brut force the possibility to find c1 and c2
+				int c1 = -1, c2 = -1, i=0, j=0;
+				while ( c1==-1 && i<36){
+					while (c2==-1 && j<36){
+						if ((36*i + j) == firstPart){
+							c1 = i;
+							c2 = j;
+						}
+						j++;
+					}
+					j = 0;
+					i++;
+				}
+				vat_str.push_back(c1<10 ? c1+'0' : (c1-10)+'A');
+				vat_str.push_back(c2<10 ? c2+'0' : (c2-10)+'A');
+				vat_str.append(vat_number_str.substr(len-9));
+			} else if (cap.strategy == DEPENDS_ON_THREE_TYPES){
+				long long d = vat_number - std::pow(2, 40);
+				if (d > 0){
+					// For matching [0-9]{9}([0-9]{3})?
+					vat_str.append(std::to_string(d));
+				} else {
+					// For matching [A-Z]{2}[0-9]{3}
+					std::string vat_number_str = std::to_string(vat_number);
+					int len = vat_number_str.length();
+					int firstPart = std::atoi(vat_number_str.substr(0, len-3).c_str());
+					// Brut force the possibility to find c1 and c2
+					int c1 = -1, c2 = -1, i=0, j=0;
+					while ( c1==-1 && i<26){
+						while (c2==-1 && j<26){
+							if ((26*i + j) == firstPart){
+								c1 = i;
+								c2 = j;
+							}
+							j++;
+						}
+						j = 0;
+						i++;
+					}
+					vat_str.push_back(char(c1+'A'));
+					vat_str.push_back(char(c2+'A'));
+					vat_str.append(vat_number_str.substr(len-3));
+				}
+			} else if (cap.strategy == IRELAND_SPECIFIC){
+				std::string vat_number_str = std::to_string(vat_number);
+				int len = vat_number_str.length();
+				if ( vat_number_str.length() > 9 ){
+					// For matching [0-9]{7}[A-Z]W? or [0-9]{7}[A-Z]{2}
+					BigInteger numerical(vat_number_str);
+					numerical -= BigInteger(2).pow(33);
+					len = numerical.toString().length();
+					int firstPart = std::atoi(numerical.toString().substr(0, len-7).c_str());
+					// Brut force the possibility to find c1 and c2
+					int c1 = -1, c2 = -1, i=0, j=0;
+					while ( c1==-1 && i<26){
+						while (c2==-1 && j<26){
+							if ((26*j + i) == firstPart){
+								c1 = i;
+								c2 = j;
+							}
+							j++;
+						}
+						j = 0;
+						i++;
+					}
+					vat_str.append(numerical.toString().substr(len-7));
+					vat_str.push_back(char(c1+'A'));
+					if (c2 != 0){
+						vat_str.push_back(char(c2+'A'));
+					}
+				} else {
+					// For matching [0-9][A-Z*+][0-9]{5}[A-Z]
+					int firstPart = std::atoi(vat_number_str.substr(0, len-6).c_str());
+					//int secondPart = std::atoi(vat_number_str.substr(3).c_str());
+					// Brut force the possibility to find c1 and c2
+					int c1 = -1, c2 = -1, i=0, j=0;
+					while ( c1==-1 && i<28){
+						while (c2==-1 && j<28){
+							if ((26*i + j) == firstPart){
+								c1 = i;
+								c2 = j;
+							}
+							j++;
+						}
+						j = 0;
+						i++;
+					}				
+					//std::cout << firstPart << " / " << secondPart << std::endl;
+					vat_str.push_back(vat_number_str.at(3));
+					vat_str.push_back(c1<26 ? char(c1+'A') : (c1==26 ? '+' : '*'));
+					vat_str.append(vat_number_str.substr(4));
+					vat_str.push_back(c2<26 ? char(c2+'A') : (c2==26 ? '+' : '*'));
+				}
+			} else if (cap.strategy == SEQUENCE_OF_FACTORIAL_POW){
+				while (vat_number != 0){
+					int remain = vat_number % 36;
+					vat_number = vat_number / 36;
+					char c = (remain<10 ? remain+'0' : (remain-10)+'A');
+					vat_str.push_back(c);
+				}
+				std::reverse(vat_str.begin(), vat_str.end());
+			}
+		}
+		
+		ret.isVAT = (country_group != 0);
+		ret.vatin = (iso+vat_str);
+		ret.formula = formulation;
+		//std::cout << iso << vat_str << std::endl;
+		//std::cout << formulation << std::endl;
+	}
+	return ret;
+}
+
 /**
  *	struct country_and_pattern
  *	{
@@ -101,10 +344,17 @@ int64_t UfiNumber::get_numerical_value(std::string isolang)
 		if (std::regex_match(vatin, re_valid)){
 			if (strategy == TRIVIALLY){
 				// V = numerical part
+				std::string vatin_tmp = vatin;
 				std::smatch match_d;
 				std::regex re_digit("[0-9]+");
-				std::regex_search(vatin, match_d, re_digit);
-				value = std::stoll(match_d.str());
+				std::regex_search(vatin_tmp, match_d, re_digit);
+				std::string str_value = match_d.str();
+				if (!isolang.compare("NL")){
+					vatin_tmp = match_d.suffix();
+					std::regex_search(vatin_tmp, match_d, re_digit);
+					str_value.append(match_d.str());
+				}
+				value = std::stoll(str_value.c_str());
 			} else if (strategy == NUM8_AND_LETTER){
 				// V = l . 10^8 + d
 				int l = 0, d = 0;
@@ -152,7 +402,7 @@ int64_t UfiNumber::get_numerical_value(std::string isolang)
 				} catch (std::invalid_argument const& e){
 					c2 = (without_iso.at(1) - 'A') + 10;
 				}
-				std::cout << d << " " << c1 << " " << c2 << std::endl;
+				//std::cout << d << " " << c1 << " " << c2 << std::endl;
 				value = (36 * c1 + c2) * std::pow(10, 9) + d;
 			} else if (strategy == DEPENDS_ON_THREE_TYPES){
 				unsigned long d = 0;
@@ -247,7 +497,7 @@ int64_t UfiNumber::get_numerical_value(std::string isolang)
 		}		
 	} catch (const std::out_of_range& e){
 		// iso country code does not exist
-		std::cout << e.what() << std::endl;
+		std::cerr << e.what() << std::endl;
 	}
 	return value;
 }

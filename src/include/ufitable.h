@@ -25,7 +25,19 @@ static const std::array<char, 31> tbase31 = {
 
 // Table 2-4 reorganisation (real value = value+1)
 static const std::array<int, 15> t24 = { 5, 4, 3, 7, 2, 8, 9, 10, 1, 0, 11, 6, 12, 13, 14 };
-	
+
+
+struct reversed_ufi
+{
+	bool isVAT;
+	std::string vatin;
+	int64_t formula;
+	std::string to_string() const {
+		std::stringstream ss;
+		ss << (isVAT ? "VATIN" : "Company key") << ':' << vatin << ", formula:" << formula;
+		return ss.str();
+	}
+};
 
 struct group_and_code
 {

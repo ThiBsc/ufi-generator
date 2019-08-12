@@ -33,10 +33,13 @@ typedef std::bitset<PAYLOAD_SIZE> bspayload;
 class UfiNumber
 {
 public:
+	UfiNumber();
 	UfiNumber(std::string vatin, int64_t formula);
 	virtual ~UfiNumber();
 	std::string generate() throw(UfiException);
+	std::string generate(std::string vatin, int64_t formula) throw(UfiException);
     void validate(std::string nufi, bool bypassVersionNumber = false) throw(UfiException);
+	struct reversed_ufi decode(std::string nufi);
 	static std::string version;
 
 private:
