@@ -557,13 +557,13 @@ BigInteger UfiNumber::step1()
 		// vatin is a company key
 		// RED part on the doc
 		std::string red = std::bitset<28>(formula).to_string();
-		std::cout << red << std::endl;
+		//std::cout << red << std::endl;
 		// BLUE part on the doc
 		std::string blue = std::bitset<4>(0).to_string();
-		std::cout << blue << std::endl;
+		//std::cout << blue << std::endl;
 		// GREEN part on the doc
 		std::string green = std::bitset<41>(strtoll(vatin.c_str(), NULL, 10)).to_string();
-		std::cout << green << std::endl;
+		//std::cout << green << std::endl;
 		bs_payload = bspayload(red+blue+green+version);
 		std::cout << bs_payload << std::endl;
 	}
