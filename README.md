@@ -1,7 +1,7 @@
 # ufi-generator
 [![License: MIT](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/gpl-3.0)
 
-A C++ UFI (Unique Formula Identifier) generator implementation  
+C++ UFI generator, UFI decoder implementation  
 :books: [UFI Developer manual](https://poisoncentres.echa.europa.eu/documents/22284544/22295820/ufi_developers_manual_en.pdf)
 
 ## Compile
@@ -25,13 +25,12 @@ nufi --decode GMTT-2SQN-6FDD-6TV1'
 ```
 
 ## C++ Sample
+
 ```cpp
 // Encode
-std::string vatin = "IE9Z54321Y";
-int64_t formula = 134217728;
-UfiNumber nufi(vatin, formula);
+UfiNumber nufi;
 try {
-    std::string snufi = nufi.generate();
+    std::string snufi = nufi.generate("IE9Z54321Y", 134217728);
     // UFI: GMTT-2SQN-6FDD-6TV1
     std::cout << "UFI: " << snufi << std::endl;
     nufi.validate(snufi);
