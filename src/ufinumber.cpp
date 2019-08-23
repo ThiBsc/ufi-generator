@@ -589,12 +589,9 @@ std::vector<int> UfiNumber::step2(BigInteger payload)
 
 std::vector<int> UfiNumber::step3(std::vector<int> base31)
 {
-	std::vector<int> reorg_base31;
-	int index = 0;
-	while (index < UFI_SIZE-1){
-		reorg_base31.push_back(base31.at(t24.at(index++)));
-	}
-	return reorg_base31;
+	// In 	1 2 3 4 5 6 7  8  9 10 11 12 13 14 15 
+	// Out 	6 5 4 8 3 9 10 11 2 1  12 7  13 14 15 
+	return {base31[5], base31[4], base31[3], base31[7], base31[2], base31[8], base31[9], base31[10], base31[1], base31[0], base31[11], base31[6], base31[12], base31[13], base31[14]};
 }
 
 char UfiNumber::step4(std::vector<int> reorg_base31)
