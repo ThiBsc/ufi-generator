@@ -10,7 +10,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: ghaction-cmake
-    - uses: lpenz/ghaction-cmake@v0.1
-      run: cmake CMakeLists.txt
+      uses: lpenz/ghaction-cmake@v0.1
     - name: make
       run: make nufi
