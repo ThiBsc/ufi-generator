@@ -167,6 +167,8 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 		if (country_group == 0){
 			// UFI with company key
 			vat_str = std::to_string(vat_number);
+		} else if (iso.empty()){
+			throw UfiException(UfiException::CREATION, UFI002, "Country code does not exist.");
 		} else {
 			// UFI with VATIN
 			// Reverse the "STRATEGY"
