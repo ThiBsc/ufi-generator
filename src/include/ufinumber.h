@@ -36,21 +36,25 @@ public:
 	UfiNumber();
 	UfiNumber(std::string vatin, int64_t formula);
 	virtual ~UfiNumber();
+
 	std::string generate() throw(UfiException);
 	std::string generate(std::string vatin, int64_t formula) throw(UfiException);
-    void validate(std::string nufi, bool bypassVersionNumber = false) throw(UfiException);
+    void validate(std::string nufi) throw(UfiException);
+	
 	struct reversed_ufi decode(std::string nufi);
 	static std::string version;
 
 private:
-	int64_t get_numerical_value(std::string isolang);
 	BigInteger step1();
 	std::vector<int> step2(BigInteger payload);
 	std::vector<int> step3(std::vector<int> base31);
 	char step4(std::vector<int> reorg_base31);
+	
+	int64_t getNumericalValue(std::string isolang);
+	std::string ufiToBinary(std::string ufi) const;
+
 	std::string vatin;
 	int64_t formula;
-	unsigned short version_number;
 	
 };
 

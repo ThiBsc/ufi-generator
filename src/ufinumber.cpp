@@ -26,9 +26,8 @@ std::string UfiNumber::generate() throw(UfiException)
 	std::stringstream ufi;
 	if (0 <= formula && formula <= 268435455){
 		BigInteger payload = step1();
-		version_number = payload.toString(2).back()-'0';
 		
-		std::cout << payload.toString() << std::endl;
+		//std::cout << payload.toString() << std::endl;
 		std::vector<int> base31 = step2(payload);
 		std::vector<int> reorg_base31 = step3(base31);
 		char checksum = step4(reorg_base31);
@@ -55,17 +54,19 @@ std::string UfiNumber::generate(std::string vatin, int64_t formula) throw(UfiExc
 	return generate();
 }
 
-void UfiNumber::validate(std::string nufi, bool bypassVersionNumber) throw(UfiException)
+void UfiNumber::validate(std::string nufi) throw(UfiException)
 {
 	nufi.erase(std::remove_if(nufi.begin(), nufi.end(),
 		  [](const char& c){ return c=='-' || c==' '; }),
 		  nufi.end());
+	// VAL001
 	if (nufi.size() == 16){
 		bool bAllGoodChar = true;
 		for (const char& c : nufi){
 			auto result = std::find(tbase31.begin(), tbase31.end(), c);
 			bAllGoodChar &= (result != tbase31.end());
 		}
+		// VAL002
 		if (bAllGoodChar){
 			int checksum = 0;
 			int multiplicator = 2;
@@ -77,12 +78,37 @@ void UfiNumber::validate(std::string nufi, bool bypassVersionNumber) throw(UfiEx
 				checksum += (multiplicator * (it - tbase31.begin()));
 				multiplicator++;
 			}
+			// VAL003
 			if (checksum % 31 == 0){
-				// The right-most bit of the version must be 0
-                if (bypassVersionNumber || version_number == 0){
-					// validate
+				std::string bi_binary = ufiToBinary(nufi);
+
+				int country_group = std::atoi(BigInteger(bi_binary.substr(FORMULA_SIZE, COUNTRY_GCODE_SIZE), 2).toString().c_str());
+				auto it_nOfBits = std::find_if(t21.begin(), t21.end(), [&country_group](std::pair<std::string, struct group_and_code> const& pgc) -> bool {
+					return pgc.second.country_group_code == country_group;
+				});
+				int nOfBits = (it_nOfBits != t21.end() ? it_nOfBits->second.nbits : 0 );
+				int country_code = std::atoi(BigInteger(bi_binary.substr(FORMULA_SIZE+COUNTRY_GCODE_SIZE, nOfBits), 2).toString().c_str());
+				// when nOfBits = -1, (FR, GB)
+				if (nOfBits == NONE){
+					nOfBits = 0;
+					country_code = NONE;
+				}
+				// Check if the country code exists
+				auto it_iso = std::find_if(t21.begin(), t21.end(), [&country_group, &country_code](std::pair<std::string, struct group_and_code> const& pgc) -> bool {
+					return pgc.second.country_group_code == country_group && pgc.second.country_code == country_code;
+				});
+
+				// VAL004
+				if (it_iso != t21.end()){
+					// The right-most bit of the version must be 0
+					// VAL005
+					if (bi_binary.back() == '0'){
+						// validate
+					} else {
+						throw UfiException(UfiException::VALIDATION, VAL005, "Its internal version number is not correct");
+					}
 				} else {
-					throw UfiException(UfiException::VALIDATION, VAL005, "Its internal version number is not correct");
+					throw UfiException(UfiException::VALIDATION, VAL004, "Its internal country code is not correct");
 				}
 			} else {
 				throw UfiException(UfiException::VALIDATION, VAL003, "You may have inverted characters or typed an incorrect character");
@@ -100,7 +126,7 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 	struct reversed_ufi ret;
 	bool canDecode = true;
 	try {
-		validate(nufi, true);
+		validate(nufi);
 	} catch(UfiException const& e){
 		canDecode = false;
 		ret.vatin = "";
@@ -109,36 +135,8 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 	}
 
 	if (canDecode){
-		// Clean the ufi
-		nufi.erase(std::remove(nufi.begin(), nufi.end(), '-'), nufi.end());
-
-		// Reverse step 4
-		nufi.erase(0, 1);
-
-		// Reverse step 3
-		std::vector<int> rev_chars(UFI_SIZE-1, 0);
-		int i = 0;
-		for (const char &c : nufi){
-			auto it = std::find(tbase31.begin(), tbase31.end(), c);
-			rev_chars[t24.at(i)] = std::distance(tbase31.begin(), it);
-			i++;
-		}
-
-		// Reverse step 2
-		BigInteger bi = BigInteger::ZERO;
-		int pow = nufi.size()-1;
-		for (const int& i : rev_chars){
-			//std::cout << BigInteger(i) << " * " << 31 << "^" << pow << std::endl;
-			bi += BigInteger(i) * BigInteger(31).pow(pow);
-			pow--;
-		}
-
-		// Reverse step 1
-		std::string bi_binary = bi.toString(2);
-		// Left-pad '0' if less than payload_size
-		while (bi_binary.length() < PAYLOAD_SIZE){
-			bi_binary.insert(0, "0");
-		}
+		// Decompose from 16 Hexa char to 74-bit
+		std::string bi_binary = ufiToBinary(nufi);
 		
 		std::string vat_str;
 		int64_t formulation = std::atoi(BigInteger(bi_binary.substr(0, FORMULA_SIZE), 2).toString().c_str());
@@ -167,8 +165,6 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 		if (country_group == 0){
 			// UFI with company key
 			vat_str = std::to_string(vat_number);
-		} else if (iso.empty()){
-			throw UfiException(UfiException::CREATION, UFI002, "Country code does not exist.");
 		} else {
 			// UFI with VATIN
 			// Reverse the "STRATEGY"
@@ -327,13 +323,120 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 }
 
 /**
+ *	struct group_and_code
+ * 	{
+ *		std::string country;
+ *		int country_group_code, nbits, country_code;
+ *	};
+ */
+BigInteger UfiNumber::step1()
+{
+	bspayload bs_payload(0);
+	std::smatch match_isoccode;
+	std::regex re_isoccode("^[A-Z]{2}");
+	if (std::regex_search(vatin, match_isoccode, re_isoccode)){
+		std::string iso_country_code = match_isoccode.str(ENTIRE_MATCH);
+		try {
+			const struct group_and_code gac = t21.at(iso_country_code);
+			int cgcode = gac.country_group_code;
+			int nbits = gac.nbits;
+			int ccode = gac.country_code;
+		
+			int idx = PAYLOAD_SIZE-1;
+			// RED part on the doc
+			for (int i=FORMULA_SIZE-1; i>=0; i--){
+				if ( (formula & (1 << i)) ){
+					bs_payload.set(idx);
+				}
+				idx--;
+			}
+			// BLUE part on the doc
+			for (int i=COUNTRY_GCODE_SIZE-1; i>=0; i--){
+				if ( (cgcode & (1 << i)) ){
+					bs_payload.set(idx);
+				}
+				idx--;
+			}
+			// YELLOW part on the doc
+			for (int i=nbits-1; i>=0; i--){
+				if ( (ccode & (1 << i)) ){
+					bs_payload.set(idx);
+				}
+				idx--;
+			}
+			// GREEN part on the doc
+			int64_t numerical_value = getNumericalValue(iso_country_code);
+			bs_payload |= bspayload((numerical_value << 1));
+			
+			std::cout << gac.to_string() << std::endl;
+		} catch (const std::out_of_range& e){
+			// iso country code does not exist
+			throw UfiException(UfiException::CREATION, UFI002, "Country code does not exist");
+		}
+	} else {
+		// vatin is a company key
+		// RED part on the doc
+		std::string red = std::bitset<28>(formula).to_string();
+		//std::cout << red << std::endl;
+		// BLUE part on the doc
+		std::string blue = std::bitset<4>(0).to_string();
+		//std::cout << blue << std::endl;
+		// GREEN part on the doc
+		std::string green = std::bitset<41>(strtoll(vatin.c_str(), NULL, 10)).to_string();
+		//std::cout << green << std::endl;
+		bs_payload = bspayload(red+blue+green+version);
+		std::cout << bs_payload << std::endl;
+	}
+	return BigInteger(bs_payload.to_string(), 2);
+}
+
+std::vector<int> UfiNumber::step2(BigInteger payload)
+{
+	BigInteger modulo = 31;
+	std::vector<int> base31;
+	while (!(payload == BigInteger::ZERO)){
+		BigInteger mod = payload.modulus(modulo);
+		payload = payload.divide(modulo);
+		base31.emplace_back(std::atoi(mod.toString().c_str()));
+	}
+	// Left-pad if less than 15 number
+	for (int i=base31.size(); i<15; ++i){
+		base31.emplace_back(0);
+	}
+	std::reverse(base31.begin(), base31.end());
+	return base31;
+}
+
+std::vector<int> UfiNumber::step3(std::vector<int> base31)
+{
+	// In 	1 2 3 4 5 6 7  8  9 10 11 12 13 14 15 
+	// Out 	6 5 4 8 3 9 10 11 2 1  12 7  13 14 15 
+	return {base31[5], base31[4], base31[3], base31[7], base31[2], base31[8], base31[9], base31[10], base31[1], base31[0], base31[11], base31[6], base31[12], base31[13], base31[14]};
+}
+
+char UfiNumber::step4(std::vector<int> reorg_base31)
+{
+	int checksum = 0;
+	int multiplicator = 2;
+	for (const int& i : reorg_base31){
+		checksum += (multiplicator * i);
+		multiplicator++;
+	}
+	//std::cout << checksum << std::endl;
+	int checksum_value = (31 - (checksum % 31)) % 31;
+	char checksum_char = tbase31.at(checksum_value);
+	assert((checksum + checksum_value) % 31 == 0);
+	return checksum_char;
+}
+
+/**
  *	struct country_and_pattern
  *	{
  *		std::string country, pattern;
  *		int strategy;
  *	};
  */
-int64_t UfiNumber::get_numerical_value(std::string isolang)
+int64_t UfiNumber::getNumericalValue(std::string isolang)
 {
 	int64_t value = 0;
 	try {
@@ -504,110 +607,37 @@ int64_t UfiNumber::get_numerical_value(std::string isolang)
 	return value;
 }
 
-/**
- *	struct group_and_code
- * 	{
- *		std::string country;
- *		int country_group_code, nbits, country_code;
- *	};
- */
-BigInteger UfiNumber::step1()
+std::string UfiNumber::ufiToBinary(std::string ufi) const
 {
-	bspayload bs_payload(0);
-	std::smatch match_isoccode;
-	std::regex re_isoccode("^[A-Z]{2}");
-	if (std::regex_search(vatin, match_isoccode, re_isoccode)){
-		std::string iso_country_code = match_isoccode.str(ENTIRE_MATCH);
-		try {
-			const struct group_and_code gac = t21.at(iso_country_code);
-			int cgcode = gac.country_group_code;
-			int nbits = gac.nbits;
-			int ccode = gac.country_code;
-		
-			int idx = PAYLOAD_SIZE-1;
-			// RED part on the doc
-			for (int i=FORMULA_SIZE-1; i>=0; i--){
-				if ( (formula & (1 << i)) ){
-					bs_payload.set(idx);
-				}
-				idx--;
-			}
-			// BLUE part on the doc
-			for (int i=COUNTRY_GCODE_SIZE-1; i>=0; i--){
-				if ( (cgcode & (1 << i)) ){
-					bs_payload.set(idx);
-				}
-				idx--;
-			}
-			// YELLOW part on the doc
-			for (int i=nbits-1; i>=0; i--){
-				if ( (ccode & (1 << i)) ){
-					bs_payload.set(idx);
-				}
-				idx--;
-			}
-			// GREEN part on the doc
-			int64_t numerical_value = get_numerical_value(iso_country_code);
-			bs_payload |= bspayload((numerical_value << 1));
-			
-			std::cout << gac.to_string() << std::endl;
-		} catch (const std::out_of_range& e){
-			// iso country code does not exist
-			throw UfiException(UfiException::CREATION, UFI002, "Country code does not exist");
-		}
-	} else {
-		// vatin is a company key
-		// RED part on the doc
-		std::string red = std::bitset<28>(formula).to_string();
-		//std::cout << red << std::endl;
-		// BLUE part on the doc
-		std::string blue = std::bitset<4>(0).to_string();
-		//std::cout << blue << std::endl;
-		// GREEN part on the doc
-		std::string green = std::bitset<41>(strtoll(vatin.c_str(), NULL, 10)).to_string();
-		//std::cout << green << std::endl;
-		bs_payload = bspayload(red+blue+green+version);
-		std::cout << bs_payload << std::endl;
-	}
-	return BigInteger(bs_payload.to_string(), 2);
-}
+	// Clean the ufi
+	ufi.erase(std::remove(ufi.begin(), ufi.end(), '-'), ufi.end());
 
-std::vector<int> UfiNumber::step2(BigInteger payload)
-{
-	BigInteger modulo = 31;
-	std::vector<int> base31;
-	while (!(payload == BigInteger::ZERO)){
-		BigInteger mod = payload.modulus(modulo);
-		payload = payload.divide(modulo);
-		base31.emplace_back(std::atoi(mod.toString().c_str()));
-	}
-	// Left-pad if less than 15 number
-	for (int i=base31.size(); i<15; ++i){
-		base31.emplace_back(0);
-	}
-	std::reverse(base31.begin(), base31.end());
-	return base31;
-}
+	// Reverse step 4
+	ufi.erase(0, 1);
 
-std::vector<int> UfiNumber::step3(std::vector<int> base31)
-{
-	// In 	1 2 3 4 5 6 7  8  9 10 11 12 13 14 15 
-	// Out 	6 5 4 8 3 9 10 11 2 1  12 7  13 14 15 
-	return {base31[5], base31[4], base31[3], base31[7], base31[2], base31[8], base31[9], base31[10], base31[1], base31[0], base31[11], base31[6], base31[12], base31[13], base31[14]};
-}
-
-char UfiNumber::step4(std::vector<int> reorg_base31)
-{
-	int checksum = 0;
-	int multiplicator = 2;
-	for (const int& i : reorg_base31){
-		checksum += (multiplicator * i);
-		multiplicator++;
+	// Reverse step 3
+	std::vector<int> rev_chars(UFI_SIZE-1, 0);
+	int i = 0;
+	for (const char &c : ufi){
+		auto it = std::find(tbase31.begin(), tbase31.end(), c);
+		rev_chars[t24.at(i)] = std::distance(tbase31.begin(), it);
+		i++;
 	}
-	//std::cout << checksum << std::endl;
-	int checksum_value = (31 - (checksum % 31)) % 31;
-	char checksum_char = tbase31.at(checksum_value);
-	assert((checksum + checksum_value) % 31 == 0);
-	return checksum_char;
-}
 
+	// Reverse step 2
+	BigInteger bi = BigInteger::ZERO;
+	int pow = ufi.size()-1;
+	for (const int& i : rev_chars){
+		//std::cout << BigInteger(i) << " * " << 31 << "^" << pow << std::endl;
+		bi += BigInteger(i) * BigInteger(31).pow(pow);
+		pow--;
+	}
+
+	// Reverse step 1
+	std::string bi_binary = bi.toString(2);
+	// Left-pad '0' if less than payload_size
+	while (bi_binary.length() < PAYLOAD_SIZE){
+		bi_binary.insert(0, "0");
+	}
+	return bi_binary;
+}
