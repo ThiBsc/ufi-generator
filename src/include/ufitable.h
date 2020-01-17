@@ -103,6 +103,9 @@ static const Table_2_1 t21 = {
 	{"MT", {"Malta", 5, 7, 20}},
 	{"SI", {"Slovenia", 5, 7, 21}},
 	{"LI", {"Lichtenstein", 5, 7, 22}},
+#ifdef UFI_SWISS
+	{"CHE", {"Swiss", 5, 7, 50}},
+#endif
 };
 
 static const Table_2_2 t22 = {
@@ -132,6 +135,9 @@ static const Table_2_2 t22 = {
 	{"SE", {"Sweden", "(SE)[0-9]{12}", TRIVIALLY}},
 	{"SI", {"Slovenia", "(SI)[0-9]{8}", TRIVIALLY}},
 	{"SK", {"Slovakia", "(SK)[0-9]{10}", TRIVIALLY}},
+#ifdef UFI_SWISS
+	{"CHE", {"Swiss", "(CHE)[0-9]{9}", TRIVIALLY}},
+#endif
 	
 	{"CY", {"Cyprus", "(CY)[0-9]{8}[A-Z]", NUM8_AND_LETTER}},
 	

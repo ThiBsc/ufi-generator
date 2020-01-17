@@ -2,10 +2,12 @@
 [![License: MIT](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/gpl-3.0)
 
 UFI generator/decoder (Unique Formula Identifier)  
+Works with [Swiss](https://www.anmeldestelle.admin.ch/chem/fr/home/themen/pflicht-hersteller/selbstkontrolle/kennzeichnung/ufi-eindeutiger-rezepturidentifikator.spa.ufi-generator.app/UFI_fr.html) UFIs and [ECHA](https://ufi.echa.europa.eu/#/create)  
 :books: [UFI Developer manual](https://poisoncentres.echa.europa.eu/documents/22284544/22295820/ufi_developers_manual_en.pdf)
 
 ## Compile
 ```bash
+# To use with Swiss UFI: cmake -DUFI_SWISS=1 CMakeLists.txt
 cmake CMakeLists.txt
 make nufi
 ```

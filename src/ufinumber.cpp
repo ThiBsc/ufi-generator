@@ -156,7 +156,7 @@ struct reversed_ufi UfiNumber::decode(std::string nufi)
 		});
 		std::string iso = (it_iso != t21.end() ? it_iso->first : "" );
 		
-		//std::cout << formulation << " " << country_group << std::endl;
+		//std::cout << formulation << " " << country_group << " " << country_code << std::endl;
 		int startBit = FORMULA_SIZE+COUNTRY_GCODE_SIZE+nOfBits;
 		int endBit = PAYLOAD_SIZE - startBit;
 		int64_t vat_number = std::atoll(BigInteger(bi_binary.substr(startBit, endBit-1), 2).toString().c_str());
@@ -333,7 +333,7 @@ BigInteger UfiNumber::step1()
 {
 	bspayload bs_payload(0);
 	std::smatch match_isoccode;
-	std::regex re_isoccode("^[A-Z]{2}");
+	std::regex re_isoccode("^[A-Z]+");
 	if (std::regex_search(vatin, match_isoccode, re_isoccode)){
 		std::string iso_country_code = match_isoccode.str(ENTIRE_MATCH);
 		try {

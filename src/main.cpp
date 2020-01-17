@@ -5,6 +5,10 @@
 
 #include "include/ufinumber.h"
 
+#ifdef UFI_SWISS
+#pragma message "Compile with Swiss UFI"
+#endif
+
 const std::string progname = "nufi";
 
 void print_help();
@@ -80,5 +84,8 @@ void print_help(){
 		"\t--decode, -d\t [UFI STR] Display VATIN and FORMULA from UFI\n"
         "Example of use:\n"
         << progname << " --vatin IE9Z54321Y --formula 134217728\n"
+#ifdef UFI_SWISS
+		<< progname << " --vatin CHE123456789 --formula 1\n"
+#endif
 		<< progname << " --decode GMTT-2SQN-6FDD-6TV1" << std::endl;
 }
